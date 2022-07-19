@@ -1,4 +1,4 @@
-# XYZ-tub applicaiton
+# XYZ-tank
 
 ...
 

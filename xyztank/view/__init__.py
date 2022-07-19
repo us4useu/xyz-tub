@@ -1,0 +1,1 @@
+from xyztank.view.console import View, ConsoleView

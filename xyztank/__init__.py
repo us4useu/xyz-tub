@@ -1,0 +1,1 @@
+from xyztank.version import *
