@@ -5,6 +5,7 @@ Application to interact with XYZ-tank system.
 ## Requirements
 
 Python >= 3.8
+setuptools
 
 ## Installation
 
