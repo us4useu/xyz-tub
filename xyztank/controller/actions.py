@@ -22,6 +22,9 @@ class Action(ABC):
 
 
 class StartMeasurementAction(Action):
+    """
+    Starts new measurement.
+    """
 
     def execute(self, ctx: ActionContext):
         event: StartMeasurementEvent = ctx.event
@@ -31,6 +34,9 @@ class StartMeasurementAction(Action):
 
 
 class SaveMeasurementAction(Action):
+    """
+    Saves current measurement result.
+    """
 
     def execute(self, ctx: ActionContext):
         event: SaveMeasurementEvent = ctx.event
@@ -40,6 +46,9 @@ class SaveMeasurementAction(Action):
 
 
 class StopMeasurementAction(Action):
+    """
+    Stops current measurement.
+    """
 
     def execute(self, ctx: ActionContext):
         model: XyzSystem = ctx.model

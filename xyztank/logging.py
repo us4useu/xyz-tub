@@ -37,5 +37,8 @@ LOGGER_FACTORY = LoggerFactory(output_file=OUTPUT_FILE)
 
 
 def get_logger(name: str):
+    """
+    Creates a new instance of logger with a given name.
+    """
     return LOGGER_FACTORY.get_logger(name)
 

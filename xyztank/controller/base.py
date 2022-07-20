@@ -1,8 +1,5 @@
 from xyztank.view import View
-from xyztank.model import XyzSystem
 import multiprocessing as mp
-from xyztank.logging import get_logger
-from xyztank.events import *
 from xyztank.controller.actions import *
 
 
@@ -21,11 +18,19 @@ class Controller:
         self._process = None
 
     def start(self):
+        """
+        Starts controller.
+
+        Currently the controller is started in a separte Python interpreter
+        process (see package multiprocessing).
+        """
         self._process = mp.Process(target=self.main_loop)
         self._process.start()
 
     def main_loop(self):
-        # Controller's main loop
+        """
+        Controller's main loop.
+        """
         while True:
             event = self.event_queue.get()
             if isinstance(event, ExitApplicationEvent):

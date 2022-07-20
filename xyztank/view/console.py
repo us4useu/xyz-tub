@@ -7,6 +7,9 @@ from xyztank.events import *
 
 
 class ConsoleView(View):
+    """
+    Console-based implementation of view.
+    """
 
     def __init__(self, event_queue: mp.Queue):
         super().__init__(event_queue)

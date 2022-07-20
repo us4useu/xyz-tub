@@ -16,33 +16,65 @@ from xyztank.logging import get_logger
 
 @dataclass(frozen=True)
 class Tank:
+    """
+    Tank (aquarium).
+
+    :param name: name of the tank
+    :param dimensions: dimensions of the tank, width (OX), depth (OY),
+      height (OZ)
+    """
     name: str
     dimensions: Tuple[float, float, float]
 
 
 @dataclass(frozen=True)
 class MeasurementPlan:
+    """
+    A plan of measurement to execute in the system.
+
+    :param name: name of the measurement
+    :param tank: the tank in which the measurement was made
+    """
     name: str
     tank: Tank
     grid: Tuple[np.ndarray, np.ndarray, np.ndarray]
 
 
 class XyzSystemState(Enum):
+    """
+    State of the XYZ system.
+
+    - STOPPED: XYZ is not performing any measurement right now,
+    - RUNNING: XYZ is currently running some measurement.
+    """
     STOPPED = 0
     RUNNING = 1
 
 
 @dataclass(frozen=True)
 class MeasurementProgress:
+    """
+    Progress of measurement.
+
+    :param data: currently acquired portion of data
+    :param percent: percentage of plan execution
+    """
     data: np.ndarray
     percent: int
 
 
 @dataclass(frozen=True)
 class MeasurementResult:
-     plan: MeasurementPlan
-     date: int
-     data: np.ndarray
+    """
+    Measurement result.
+
+    :param plan: executed plan
+    :param date: date of measurement (epoch timestamp)
+    :param data: measurement data
+    """
+    plan: MeasurementPlan
+    date: int
+    data: np.ndarray
 
 
 class XyzSystem:
@@ -124,6 +156,8 @@ class XyzSystem:
     def get_progress(self) -> MeasurementProgress:
         """
         Returns current progress in executing the measurement plan.
+
+        :return: current measurement progress
         """
         return self.measurement_progress
 
