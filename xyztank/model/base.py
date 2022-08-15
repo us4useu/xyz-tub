@@ -44,11 +44,16 @@ class XyzSystemState(Enum):
     """
     State of the XYZ system.
 
-    - STOPPED: XYZ is not performing any measurement right now,
+    - AT_THE_BEGINNING: XYZ is at the beginning point (0.0.0)
+    - STOPPED: XYZ is not performing any measurement right now, was stopped by
+      the user,
     - RUNNING: XYZ is currently running some measurement.
+    - FINISHED: XYZ finished performing its previous measurement
     """
-    STOPPED = 0
-    RUNNING = 1
+    AT_THE_BEGINNING = 0
+    STOPPED = 1
+    RUNNING = 2
+    FINISHED = 3
 
 
 @dataclass(frozen=True)
@@ -84,7 +89,7 @@ class XyzSystem:
         self.measurement_plan = None  # Current measurement plan
         self.measurement_progress = None
         self.measurement_thread = None
-        self.state = XyzSystemState.STOPPED
+        self.state = XyzSystemState.AT_THE_BEGINNING
 
     def run_settings(self, settings_path: str):
         """
@@ -110,6 +115,7 @@ class XyzSystem:
 
         :param plan: measurement plan to configure
         """
+        self.measurement_progress = None
         self.log.info(f"Configuring measurement")
         if self.state == XyzSystemState.RUNNING:
             raise ValueError("The system is busy.")
@@ -117,19 +123,28 @@ class XyzSystem:
 
     def start_measurement(self):
         """
-        Start the currently configured measurement.
+        Start or resume the currently configured measurement.
         """
         self.log.info(f"Starting measurement")
         self._set_to_running()
         self.measurement_thread = threading.Thread(target=self._acquire_data)
         self.measurement_thread.start()
 
+    def resume_measurement(self):
+        """
+                Resume the previously configured measurement.
+        """
+        pass
+
     def stop_measurement(self):
         """
         Stop measurement currently in progress.
         """
-        self.log.info(f"Stopping the current measurement")
-        self._set_state_to_stopped()
+        if self.state != XyzSystemState.RUNNING:
+            self.log.warn("There is no measurement currently running.")
+        else:
+            self.log.info(f"Stopping the current measurement")
+            self._set_state_to_stopped()
 
     def save_measurement(self, path):
         """
@@ -171,15 +186,25 @@ class XyzSystem:
         self.log.info("Closed the handle to the system.")
 
     def _acquire_data(self):
-        grid_x, grid_y, grid_z = self.measurement_plan.grid
-        # the last axis == 2: pressure +/- values
-        result_shape = (len(grid_x), len(grid_y), len(grid_z), 2)
-        result = np.zeros(result_shape, dtype=np.float32)
+        if self.measurement_progress is None:
+            # when measurement is started for the first time
+            grid_x, grid_y, grid_z = self.measurement_plan.grid
+            # the last axis == 2: pressure +/- values
+            result_shape = (len(grid_x), len(grid_y), len(grid_z), 2)
+            result = np.zeros(result_shape, dtype=np.float32)
+            percent = 0
+        else:
+            # when measurement is resumed
+            current_measurement_progress = self.get_progress()
+            result = current_measurement_progress.data
+            percent = current_measurement_progress.percent
+            result_shape = np.shape(result)
+
         result = result.flatten()
         n_values = len(result.flatten())
-        part_size = int(math.ceil(n_values/100))
+        part_size = int(math.ceil(n_values / 100))
 
-        for i in range(100):
+        for i in range(percent, 100):
             if self.state == XyzSystemState.STOPPED:
                 # Someone stopped the measurement, exit.
                 return
@@ -189,11 +214,14 @@ class XyzSystem:
             if i % 10 == 0:
                 self.log.info(f"Measurement in progress: "
                               f"{self.measurement_progress.percent} %")
+                print(f"Measurement in progress: "
+                              f"{self.measurement_progress.percent} %") #while loginfo doesn't work
             time.sleep(0.1)
-        self._set_state_to_stopped()
+        self._set_state_to_finished()
         self.measurement_progress = MeasurementProgress(
             data=result.reshape(result_shape), percent=100)
         self.log.info("Measurement finished.")
+        print("Measurement finished.") #while loginfo doesn't work
 
     def _set_to_running(self):
         if self.state == XyzSystemState.RUNNING:
@@ -204,6 +232,14 @@ class XyzSystem:
         if self.state != XyzSystemState.RUNNING:
             self.log.warn("There is no measurement currently running.")
         self.state = XyzSystemState.STOPPED
+
+    def _set_state_to_beginning(self):
+        if self.state == XyzSystemState.RUNNING:
+            raise ValueError("You can't do this action while system is busy.")
+        self.state = XyzSystemState.AT_THE_BEGINNING
+
+    def _set_state_to_finished(self):
+        self.state = XyzSystemState.FINISHED
 
     def _load_settings(self, path: str):
         module_name = "xyztank_settings"

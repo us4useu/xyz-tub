@@ -13,7 +13,8 @@ class Controller:
         self._actions = {
             StartMeasurementEvent: StartMeasurementAction(),
             StopMeasurementEvent: StopMeasurementAction(),
-            SaveMeasurementEvent: SaveMeasurementAction()
+            SaveMeasurementEvent: SaveMeasurementAction(),
+            ResumeMeasurementEvent: ResumeMeasurementAction()
         }
         self._process = None
 
