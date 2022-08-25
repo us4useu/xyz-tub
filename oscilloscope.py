@@ -1,7 +1,7 @@
 import ctypes
 from math import log2
 from picosdk.ps5000a import ps5000a as ps
-from picosdk.functions import assert_pico_ok, mV2adc, adc2mV
+from picosdk.functions import assert_pico_ok, mV2adc  # ,adc2mV
 from picosdk.errors import PicoSDKCtypesError
 from config import oscilloscope_settings as os
 
@@ -24,7 +24,6 @@ class Oscilloscope:
         try:
             assert_pico_ok(self.status["openunit"])
         except PicoSDKCtypesError:
-
             powerstatus = self.status["openunit"]
             # TODO Check for other possible power supply errors
             # PICO_USB3_0_DEVICE_NON_USB3_0_PORT
@@ -44,13 +43,16 @@ class Oscilloscope:
         assert_pico_ok(self.status["maximumValue"])
 
     def setChannel(self):
+        # TODO Disable all other channels, that are activated by default once the device is opened.
         self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, os.channel, 1, os.coupling_type,
                                                          os.range, 0)
         assert_pico_ok(self.status["setChannel"])
 
-        self.timeinterval = ctypes.c_float()
-        self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, os.timebase, os.n_samples,
-                                                             ctypes.byref(self.timeinterval), None, 0)
+        # TODO Verify if time interval (sampling frequency) is as desired. Use the *maxSamples argument in GetTimebase2.
+        self.verify_timeinterval = ctypes.c_float()
+        self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, self.findTimebase(os.sampling_frequency),
+                                                             os.n_samples, ctypes.byref(self.verify_timeinterval), None,
+                                                             0)
 
         # Do we want our data_buffer to be global? Maybe just put it in runMeasurement method?
         # Buffer has to be much longer than the expected received signal!
@@ -67,7 +69,8 @@ class Oscilloscope:
         assert_pico_ok(self.status["trigger"])
 
     def runMeasurement(self):
-        self.status["runBlock"] = ps.ps5000aRunBlock(self.chandle, 0, os.n_samples, os.timebase, None, 0, None,
+        self.status["runBlock"] = ps.ps5000aRunBlock(self.chandle, 0, os.n_samples,
+                                                     self.findTimebase(os.sampling_frequency), None, 0, None,
                                                      None)
         assert_pico_ok(self.status["runBlock"])
 
