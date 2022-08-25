@@ -1,7 +1,7 @@
 import ctypes
 from math import log2
 from picosdk.ps5000a import ps5000a as ps
-from picosdk.functions import assert_pico_ok
+from picosdk.functions import assert_pico_ok, mV2adc, adc2mV
 from picosdk.errors import PicoSDKCtypesError
 from config import oscilloscope_settings as os
 
@@ -62,7 +62,8 @@ class Oscilloscope:
 
     def setMeasTrigger(self):
         self.status["trigger"] = ps.ps5000aSetSimpleTrigger(self.chandle, 1, os.trigger_source,
-                                                            os.trigger_threshold, 2, os.delay, 0)
+                                                            int(mV2adc(os.trigger_threshold, os.range, self.maxADC)), 2,
+                                                            os.delay, 0)
         assert_pico_ok(self.status["trigger"])
 
     def runMeasurement(self):
@@ -121,4 +122,4 @@ class Oscilloscope:
     # on the oscilloscope.
     def findTimebase(self, sampling_frequency: float) -> int:
         formula = self._returnTimeBaseFormula(os.resolution)
-        return formula(sampling_frequency)
+        return int(formula(sampling_frequency))

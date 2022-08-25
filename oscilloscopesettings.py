@@ -9,13 +9,12 @@ class OscilloscopeSettings:
     resolution: int  # PS5000A_DEVICE_RESOLUTION[...]
     coupling_type: int  # PS5000A_COUPLING[...]
     range: int  # PS5000A_RANGE[...]
-    # TODO Converting from sampling interval/ frequency to timebase
-    # TODO Converting from desired measurement time to number of samples
+    # TODO Converting from desired measurement time to number of samples (*or give a choice)
     timebase: int  # int
+    # TODO Check if conversion works, include it in the code.
     # sampling_frequency: float
     n_samples: int  # In future change it to measurment_time
     trigger_source: int  # PS5000A_CHANNEL[...]
-    # TODO Converting from mV to adc
-    trigger_threshold: c_int16   # ADC value, probably'd like to change it to voltage
+    trigger_threshold: float   # mV
     # TODO Converting from time to number of samples
     delay: c_int16  # Number of samples ^
