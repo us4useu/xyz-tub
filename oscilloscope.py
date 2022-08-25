@@ -1,8 +1,11 @@
 import ctypes
+from math import log2
 from picosdk.ps5000a import ps5000a as ps
 from picosdk.functions import assert_pico_ok
 from picosdk.errors import PicoSDKCtypesError
 from config import oscilloscope_settings as os
+
+
 # TODO Exceptions
 # TODO Logging
 
@@ -82,3 +85,40 @@ class Oscilloscope:
     def setGenerator(self):
         # TODO Mock Implement
         pass
+
+        # Sampling frequency in MHz
+
+    # Based on picoscope5000a programming guide.
+    # noinspection PyMethodMayBeStatic
+    def _returnTimeBaseFormula(self, resolution: int):
+
+        def _14bitFormula(sampling_frequency: float):
+            if sampling_frequency == 125.0:
+                return 3
+            else:
+                return 125 / sampling_frequency + 2
+
+        def _12bitFormula(sampling_frequency: float):
+            if sampling_frequency in [125, 250, 500]:
+                return log2(500 / sampling_frequency) + 1
+            else:
+                return 62.5 / sampling_frequency + 3
+
+        def _8bitFormula(sampling_frequency: float):
+            if sampling_frequency in [250, 500, 1000]:
+                return log2(1000 / sampling_frequency)
+            else:
+                return 125 / sampling_frequency + 2
+
+        formulas = {ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_8BIT"]: _8bitFormula,
+                    ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_12BIT"]: _12bitFormula,
+                    ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_14BIT"]: _14bitFormula
+                    }
+
+        return formulas[resolution]
+
+    # Returns integer timebase parameter that will allow to set desired sampling frequency
+    # on the oscilloscope.
+    def findTimebase(self, sampling_frequency: float) -> int:
+        formula = self._returnTimeBaseFormula(os.resolution)
+        return formula(sampling_frequency)

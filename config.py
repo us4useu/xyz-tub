@@ -10,7 +10,7 @@ oscilloscope_settings = OscilloscopeSettings(
     ps.PS5000A_RANGE["PS5000A_2V"],
     8,
     2000,
-    ps.PS5000A_CHANNEL["PS5000A_EXTERNAL"],
+    ps.PS5000A_CHANNEL["PS5000A_CHANNEL_A"],
     0,  # Threshold in ADC value (int), for tests set to 0
     0
 )
