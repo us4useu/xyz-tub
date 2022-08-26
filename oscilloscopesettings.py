@@ -10,8 +10,10 @@ class OscilloscopeSettings:
     coupling_type: int  # PS5000A_COUPLING[...]
     range: int  # PS5000A_RANGE[...]
     # TODO Converting from desired measurement time to number of samples (*or give a choice)
-    sampling_frequency: float
+    sampling_frequency: float  # MHz / MSa/s
     n_samples: int  # In future change it to measurment_time
+    # buffer_length: int # ?
+    # signal_length: int # ?
     trigger_source: int  # PS5000A_CHANNEL[...]
     trigger_threshold: float   # mV
     # TODO Converting from time to number of samples
