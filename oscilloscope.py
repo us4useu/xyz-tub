@@ -52,17 +52,16 @@ class Oscilloscope:
                                                          os.range, 0)
         assert_pico_ok(self.status["setChannel"])
 
-        # TODO Verify if time interval (sampling frequency) is as desired. Use the *maxSamples argument in GetTimebase2.
         self.verify_timeinterval = ctypes.c_float()
         self.verify_n_samples = ctypes.c_int32()
         self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, self.findTimebase(os.sampling_frequency),
                                                              os.n_samples, ctypes.byref(self.verify_timeinterval),
                                                              ctypes.byref(self.verify_n_samples), 0)
         # Test
-        print(f"Verified frequency: {1 / (self.verify_timeinterval.value / 1000)} MHz")
-        print(f"Desired frequency: {os.sampling_frequency} MHz")
-        print(f"Verified samples: {self.verify_n_samples.value}")  # What's that value exactly?
-        print(f"Desired samples: {os.n_samples} ")
+        # print(f"Verified frequency: {1 / (self.verify_timeinterval.value / 1000)} MHz")
+        # print(f"Desired frequency: {os.sampling_frequency} MHz")
+        # print(f"Verified samples: {self.verify_n_samples.value}")  # What's that value exactly?
+        # print(f"Desired samples: {os.n_samples} ")
 
         # Do we want our data_buffer to be global? Maybe just put it in runMeasurement method?
         # Buffer has to be much longer than the expected received signal!
@@ -108,10 +107,15 @@ class Oscilloscope:
         # print(f"Output Samples: {len(samples)}")
 
     def setGenerator(self):
-        # TODO Mock Implement
-        pass
+        # enums describing generator's settings missing in picosdk. Need to use numerical values.
+        # V_max= 4 Vpp
+        # Not using parameters from config there.
+        # triggertype GATE and triggersource SOFTWARE doesn't work :(
+        self.status["setGenerator"] = ps.ps5000aSetSigGenBuiltInV2(self.chandle, 0, 4000000, ctypes.c_int32(1), 1000, 1000, 0, 1, ctypes.c_int32(0), 0, 0, 2, ctypes.c_int32(2), ctypes.c_int32(4), 0)
+        assert_pico_ok(self.status["setGenerator"])
 
-        # Sampling frequency in MHz
+    def startGenerator(self):
+        ps.ps5000aSigGenSoftwareControl(self.chandle, 1)
 
     # Based on picoscope5000a programming guide.
     # noinspection PyMethodMayBeStatic

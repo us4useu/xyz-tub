@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from ctypes import c_int16  # , c_float
+from ctypes import c_int16, c_int32, c_uint32, c_float
 # TODO Simplify settings' formats.
+# TODO Check if c_types.c_int16 parameters are necessary instaed of int.
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class OscilloscopeSettings:
     channel: int  # PS5000A_CHANNEL[...]
     resolution: int  # PS5000A_DEVICE_RESOLUTION[...]
@@ -17,4 +18,11 @@ class OscilloscopeSettings:
     trigger_source: int  # PS5000A_CHANNEL[...]
     trigger_threshold: float   # mV
     # TODO Converting from time to number of samples
-    delay: c_int16  # Number of samples ^
+    delay: int  # Number of samples ^
+
+    # Generator Configuration
+    offset_voltage: int  # uV / microVolts
+    Vpp: int  # uV / microVolts
+    wave_type: int  # PS5000A_WAVE_TYPE
+    signal_frequency: float  # kHz - presumption
+
