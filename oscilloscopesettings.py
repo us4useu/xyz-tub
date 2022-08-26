@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from ctypes import c_int16, c_int32, c_uint32, c_float
-# TODO Simplify settings' formats.
-# TODO Check if c_types.c_int16 parameters are necessary instaed of int.
+# TODO Simplify settings' formats.A
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -22,7 +21,7 @@ class OscilloscopeSettings:
 
     # Generator Configuration
     offset_voltage: int  # uV / microVolts
-    Vpp: int  # uV / microVolts
+    Vpp: int  # uV / microVolts; max 4Vpp
     wave_type: int  # PS5000A_WAVE_TYPE
     signal_frequency: float  # kHz - presumption
 

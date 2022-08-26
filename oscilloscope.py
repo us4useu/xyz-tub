@@ -74,7 +74,7 @@ class Oscilloscope:
     def setMeasTrigger(self):
         self.status["trigger"] = ps.ps5000aSetSimpleTrigger(self.chandle, 1, os.trigger_source,
                                                             int(mV2adc(os.trigger_threshold, os.range, self.maxADC)), 2,
-                                                            os.delay, 1000)
+                                                            os.delay, 0)
         assert_pico_ok(self.status["trigger"])
 
     def runMeasurement(self):
@@ -106,16 +106,26 @@ class Oscilloscope:
         # Test
         # print(f"Output Samples: {len(samples)}")
 
+    # Generator methods seem to work.
+    # However, after starting and stopping the generator (only setting is fine),
+    # there is still some constant noisy voltage left on generator output,
+    # lower than the generated one. I have no idea where it's from, for now,
+    # I'd reccommend setting adequate trigger threshold values, close to triggering
+    # signal's peak.
+
     def setGenerator(self):
         # enums describing generator's settings missing in picosdk. Need to use numerical values.
-        # V_max= 4 Vpp
-        # Not using parameters from config there.
-        # triggertype GATE and triggersource SOFTWARE doesn't work :(
-        self.status["setGenerator"] = ps.ps5000aSetSigGenBuiltInV2(self.chandle, 0, 4000000, ctypes.c_int32(1), 1000, 1000, 0, 1, ctypes.c_int32(0), 0, 0, 2, ctypes.c_int32(2), ctypes.c_int32(4), 0)
+        # ctypes.c_uint32(-1) - PS5000A_SHOT_SWEEP_TRIGGER_CONTINUOUS_RUN - not available as enum.
+        self.status["setGenerator"] = ps.ps5000aSetSigGenBuiltInV2(self.chandle, os.offset_voltage, os.Vpp, ctypes.c_int32(os.wave_type), os.signal_frequency * 1000, os.signal_frequency * 1000, 0, 1, ctypes.c_int32(0), 0, ctypes.c_uint32(-1), 0, ctypes.c_int32(2), ctypes.c_int32(4), 0)
         assert_pico_ok(self.status["setGenerator"])
 
     def startGenerator(self):
-        ps.ps5000aSigGenSoftwareControl(self.chandle, 1)
+        self.status["startGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 1)
+        assert_pico_ok(self.status["startGenerator"])
+
+    def stopGenerator(self):
+        self.status["stopGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 0)
+        assert_pico_ok(self.status["stopGenerator"])
 
     # Based on picoscope5000a programming guide.
     # noinspection PyMethodMayBeStatic
