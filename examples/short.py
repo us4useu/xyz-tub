@@ -11,13 +11,14 @@ tank = Tank(
 )
 
 plan = MeasurementPlan(
-    name="Example",
+    name="Short",
     tank=tank,
     position=(1e-3, 7e-3, 2e-3),
     grid_precision=(1e-3, 1e-3, 1e-3),
     grid=(
-        np.arange(-50e-3, 50e-3, 1e-3),  # OX [m]
-        np.arange(-20e-3, 20e-3, 1e-3),  # OY [m]
-        np.arange(-50e-3, 50e-3, 1e-3),  # OZ [m]
+        np.arange(-1e-3, 6e-3, 1e-3),  # OX [m]
+        np.arange(-2e-3, 7e-3, 1e-3),  # OY [m]
+        np.arange(-1e-3, 2e-3, 1e-3),  # OZ [m]
     )
+
 )
