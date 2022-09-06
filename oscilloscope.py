@@ -1,6 +1,7 @@
 import ctypes
 import numpy as np
 import matplotlib.pyplot as plt
+from time import sleep
 from math import log2
 from picosdk.ps5000a import ps5000a as ps
 from picosdk.functions import assert_pico_ok, mV2adc, adc2mV
@@ -19,9 +20,17 @@ class Oscilloscope:
         # This attribute is assigned a value later.
         self.chandle = ctypes.c_int16()
         self.status = dict()
+        self.maxADC = ctypes.c_int16()
 
-        # Open the oscilloscope
-        # TODO Move it to another method that throws an exception so that you can rerun it.
+        self.openConnection()
+        self.disableAllChannels()
+        self.findMaxADCVal()
+
+    def findMaxADCVal(self):
+        self.status["maximumValue"] = ps.ps5000aMaximumValue(self.chandle, ctypes.byref(self.maxADC))
+        assert_pico_ok(self.status["maximumValue"])
+
+    def openConnection(self):
         self.status["openunit"] = ps.ps5000aOpenUnit(ctypes.byref(self.chandle), None, os.resolution)
         try:
             assert_pico_ok(self.status["openunit"])
@@ -39,13 +48,6 @@ class Oscilloscope:
                 raise
 
             assert_pico_ok(self.status["changePowerSource"])
-
-        self._disableAllChannels()
-
-        # find maximum ADC value
-        self.maxADC = ctypes.c_int16()
-        self.status["maximumValue"] = ps.ps5000aMaximumValue(self.chandle, ctypes.byref(self.maxADC))
-        assert_pico_ok(self.status["maximumValue"])
 
     def setChannel(self):
         self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, os.channel, 1, os.coupling_type,
@@ -83,6 +85,9 @@ class Oscilloscope:
                                                      None)
         assert_pico_ok(self.status["runBlock"])
 
+    # Instead of executing this function one might consider modifying it and using as a callback function,
+    # which is executed when the data is ready. Morea in ps5000aBlockCallbackExample.py
+    def getData(self):
         is_ready = ctypes.c_int16(0)
         check = ctypes.c_int16(0)
 
@@ -113,6 +118,7 @@ class Oscilloscope:
     # I'd reccommend setting adequate trigger threshold values, close to triggering
     # signal's peak.
 
+    # UPDATE: Try just setting signal's amplitude to 0.
     def setGenerator(self):
         # enums describing generator's settings missing in picosdk. Need to use numerical values.
         # ctypes.c_uint32(-1) - PS5000A_SHOT_SWEEP_TRIGGER_CONTINUOUS_RUN - not available as enum.
@@ -126,6 +132,11 @@ class Oscilloscope:
     def stopGenerator(self):
         self.status["stopGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 0)
         assert_pico_ok(self.status["stopGenerator"])
+
+    def generateImpulse(self):
+        self.startGenerator()
+        sleep(os.impulse_length)
+        self.stopGenerator()
 
     # Based on picoscope5000a programming guide.
     # noinspection PyMethodMayBeStatic
@@ -162,7 +173,7 @@ class Oscilloscope:
         formula = self._returnTimeBaseFormula(os.resolution)
         return int(formula(sampling_frequency))
 
-    def _disableAllChannels(self):
+    def disableAllChannels(self):
         self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_A"], 0,
                                                          os.coupling_type,
                                                          os.range, 0)
