@@ -54,7 +54,7 @@ class Oscilloscope:
                                                          os.range, 0)
         assert_pico_ok(self.status["setChannel"])
 
-        self.verify_timeinterval = ctypes.c_float()
+        self.verify_timeinterval = ctypes.c_float()  # ns
         self.verify_n_samples = ctypes.c_int32()
         self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, self.findTimebase(os.sampling_frequency),
                                                              os.n_samples, ctypes.byref(self.verify_timeinterval),
@@ -76,7 +76,8 @@ class Oscilloscope:
     def setMeasTrigger(self):
         self.status["trigger"] = ps.ps5000aSetSimpleTrigger(self.chandle, 1, os.trigger_source,
                                                             int(mV2adc(os.trigger_threshold, os.range, self.maxADC)), 2,
-                                                            os.delay, 0)
+                                                            int(os.delay / (self.verify_timeinterval.value / 1000000)),
+                                                            0)
         assert_pico_ok(self.status["trigger"])
 
     def runMeasurement(self):
