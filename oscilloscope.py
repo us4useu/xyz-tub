@@ -5,12 +5,11 @@ from time import sleep
 from math import log2
 from picosdk.ps5000a import ps5000a as ps
 from picosdk.functions import assert_pico_ok, mV2adc, adc2mV
-from picosdk.errors import PicoSDKCtypesError
+from picosdk.errors import PicoSDKCtypesError, PicoError
 from config import oscilloscope_settings as os
+from logging_ import get_logger
 
-
-# TODO Exceptions
-# TODO Logging
+# TODO Consider using some @exception_handler decorator to handle exceptions.
 
 
 class Oscilloscope:
@@ -18,6 +17,7 @@ class Oscilloscope:
 
     def __init__(self):
         # This attribute is assigned a value later.
+        self.log = get_logger(type(self).__name__)
         self.chandle = ctypes.c_int16()
         self.status = dict()
         self.maxADC = ctypes.c_int16()
@@ -40,19 +40,37 @@ class Oscilloscope:
             # PICO_USB3_0_DEVICE_NON_USB3_0_PORT
             # Should the user be able to choose the power source?
             if powerstatus == 286:
+                self.log.debug("Device connected to USB 2.0 port, oscilloscope expects USB 3.0.")
                 self.status["changePowerSource"] = ps.ps5000aChangePowerSource(self.chandle, powerstatus)
             # PICO_POWER_SUPPLY_NOT_CONNECTED
             elif powerstatus == 282:
+                self.log.warning("Power supply unit not connected." +
+                                 " Only A and B channels and no generator will be available.")
                 self.status["changePowerSource"] = ps.ps5000aChangePowerSource(self.chandle, powerstatus)
             else:
+                self.log.exception("Encountered unexpected picosdk exception.")
                 raise
 
-            assert_pico_ok(self.status["changePowerSource"])
+            try:
+                assert_pico_ok(self.status["changePowerSource"])
+            except PicoError:
+                self.log.exception("Error changing power source (or related settings).")
+                raise
+            else:
+                self.log.info("Connection with the oscilloscope established.")
+        else:
+            self.log.info("Connection with the oscilloscope established.")
 
     def setChannel(self):
         self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, os.channel, 1, os.coupling_type,
                                                          os.range, 0)
-        assert_pico_ok(self.status["setChannel"])
+        try:
+            assert_pico_ok(self.status["setChannel"])
+        except PicoError:
+            self.log.exception(f"Erorr setting channel:")
+            raise
+        else:
+            self.log.info("Oscilloscope channel set with config parameters.")
 
         self.n_samples = int(1000 * os.measurement_time * os.sampling_frequency)
         self.verify_timeinterval = ctypes.c_float()  # ns
@@ -60,6 +78,8 @@ class Oscilloscope:
         self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, self.findTimebase(os.sampling_frequency),
                                                              self.n_samples, ctypes.byref(self.verify_timeinterval),
                                                              ctypes.byref(self.verify_n_samples), 0)
+        self.log.info(f"Desired sampling frequency: {os.sampling_frequency} Msa/s")
+        self.log.info(f"Verified sampling frequency: {1 / (self.verify_timeinterval.value / 1000)} MSa/s")
         # Test
         # print(f"Verified frequency: {1 / (self.verify_timeinterval.value / 1000)} MHz")
         # print(f"Desired frequency: {os.sampling_frequency} MHz")
@@ -72,20 +92,37 @@ class Oscilloscope:
         self.status["setDataBuffer"] = ps.ps5000aSetDataBuffer(self.chandle, os.channel,
                                                                ctypes.byref(self.data_buffer),
                                                                self.n_samples, 0, 0)
-        assert_pico_ok(self.status["setDataBuffer"])
+        try:
+            assert_pico_ok(self.status["setDataBuffer"])
+        except PicoError:
+            self.log.exception(f"Error setting data buffer:")
+        else:
+            self.log.info("Data buffer is set.")
 
     def setMeasTrigger(self):
         self.status["trigger"] = ps.ps5000aSetSimpleTrigger(self.chandle, 1, os.trigger_source,
                                                             int(mV2adc(os.trigger_threshold, os.range, self.maxADC)), 2,
                                                             int(os.delay / (self.verify_timeinterval.value / 1000000)),
                                                             0)
-        assert_pico_ok(self.status["trigger"])
+        try:
+            assert_pico_ok(self.status["trigger"])
+        except PicoError:
+            self.log.exception("Error setting mearument trigger.")
+            raise
+        else:
+            self.log.info("Mesurement trigger set with config parameters.")
 
     def runMeasurement(self):
         self.status["runBlock"] = ps.ps5000aRunBlock(self.chandle, 0, self.n_samples,
                                                      self.findTimebase(os.sampling_frequency), None, 0, None,
                                                      None)
-        assert_pico_ok(self.status["runBlock"])
+        try:
+            assert_pico_ok(self.status["runBlock"])
+        except PicoError:
+            self.log.exception("Error starting measurment.")
+            raise
+        else:
+            self.log.info("Measurement started. Oscilloscope is waiting for trigger.")
 
     # Instead of executing this function one might consider modifying it and using as a callback function,
     # which is executed when the data is ready. Morea in ps5000aBlockCallbackExample.py
@@ -96,11 +133,17 @@ class Oscilloscope:
         while is_ready.value == check.value:
             self.status["isReady"] = ps.ps5000aIsReady(self.chandle, ctypes.byref(is_ready))
 
+        self.log.info("Measurement data ready to be acquired.")
         overflow = ctypes.c_int16()
         c_samples = ctypes.c_int32(self.n_samples)
         self.status["getValues"] = ps.ps5000aGetValues(self.chandle, 0, ctypes.byref(c_samples), 0, 0, 0,
                                                        ctypes.byref(overflow))
-        assert_pico_ok(self.status["getValues"])
+        try:
+            assert_pico_ok(self.status["getValues"])
+        except PicoError:
+            self.log.exception("Exception acquiring data to the computer.")
+        else:
+            self.log.info("Measurement data acquired to the computer.")
 
     def plotData(self):
         samples = adc2mV(self.data_buffer, os.range, self.maxADC)
@@ -128,15 +171,33 @@ class Oscilloscope:
         # enums describing generator's settings missing in picosdk. Need to use numerical values.
         # ctypes.c_uint32(-1) - PS5000A_SHOT_SWEEP_TRIGGER_CONTINUOUS_RUN - not available as enum.
         self.status["setGenerator"] = ps.ps5000aSetSigGenBuiltInV2(self.chandle, os.offset_voltage, os.Vpp, ctypes.c_int32(os.wave_type), os.signal_frequency * 1000, os.signal_frequency * 1000, 0, 1, ctypes.c_int32(0), 0, ctypes.c_uint32(-1), 0, ctypes.c_int32(2), ctypes.c_int32(4), 0)
-        assert_pico_ok(self.status["setGenerator"])
+        try:
+            assert_pico_ok(self.status["setGenerator"])
+        except PicoError:
+            self.log.exception("Error setting the generator.")
+            raise
+        else:
+            self.log.info("Generator set with config parameters.")
 
     def startGenerator(self):
         self.status["startGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 1)
-        assert_pico_ok(self.status["startGenerator"])
+        try:
+            assert_pico_ok(self.status["startGenerator"])
+        except PicoError:
+            self.log.exception("Error starting the generator")
+            raise
+        else:
+            self.log.info("Generator started.")
 
     def stopGenerator(self):
         self.status["stopGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 0)
-        assert_pico_ok(self.status["stopGenerator"])
+        try:
+            assert_pico_ok(self.status["stopGenerator"])
+        except PicoError:
+            self.log.exception("Error stopping the generator")
+            raise
+        else:
+            self.log.info("Generator stopped.")
 
     def generateImpulse(self):
         self.startGenerator()
@@ -179,19 +240,29 @@ class Oscilloscope:
         return int(formula(sampling_frequency))
 
     def disableAllChannels(self):
-        self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_A"], 0,
-                                                         os.coupling_type,
-                                                         os.range, 0)
-        assert_pico_ok(self.status["setChannel"])
-        self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_B"], 0,
-                                                         os.coupling_type,
-                                                         os.range, 0)
-        assert_pico_ok(self.status["setChannel"])
-        self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_C"], 0,
-                                                         os.coupling_type,
-                                                         os.range, 0)
-        assert_pico_ok(self.status["setChannel"])
-        self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_D"], 0,
-                                                         os.coupling_type,
-                                                         os.range, 0)
-        assert_pico_ok(self.status["setChannel"])
+        try:
+            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_A"], 0,
+                                                             os.coupling_type,
+                                                             os.range, 0)
+            assert_pico_ok(self.status["setChannel"])
+            self.log.info("Disabled channel A.")
+
+            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_B"], 0,
+                                                             os.coupling_type,
+                                                             os.range, 0)
+            assert_pico_ok(self.status["setChannel"])
+            self.log.info("Disabled channel B.")
+
+            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_C"], 0,
+                                                             os.coupling_type,
+                                                             os.range, 0)
+            assert_pico_ok(self.status["setChannel"])
+            self.log.info("Disabled channel C.")
+
+            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_D"], 0,
+                                                             os.coupling_type,
+                                                             os.range, 0)
+            assert_pico_ok(self.status["setChannel"])
+            self.log.info("Disabled channel D.")
+        except PicoError:
+            self.log.exception("Exception disabling oscilloscope channels.")
