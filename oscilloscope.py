@@ -54,23 +54,24 @@ class Oscilloscope:
                                                          os.range, 0)
         assert_pico_ok(self.status["setChannel"])
 
+        self.n_samples = int(1000 * os.measurement_time * os.sampling_frequency)
         self.verify_timeinterval = ctypes.c_float()  # ns
         self.verify_n_samples = ctypes.c_int32()
         self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, self.findTimebase(os.sampling_frequency),
-                                                             os.n_samples, ctypes.byref(self.verify_timeinterval),
+                                                             self.n_samples, ctypes.byref(self.verify_timeinterval),
                                                              ctypes.byref(self.verify_n_samples), 0)
         # Test
         # print(f"Verified frequency: {1 / (self.verify_timeinterval.value / 1000)} MHz")
         # print(f"Desired frequency: {os.sampling_frequency} MHz")
-        # print(f"Verified samples: {self.verify_n_samples.value}")  # What's that value exactly?
-        # print(f"Desired samples: {os.n_samples} ")
+        #print(f"Verified samples: {self.verify_n_samples.value}")  # What's that value exactly?
+
 
         # Do we want our data_buffer to be global? Maybe just put it in runMeasurement method?
         # Buffer has to be much longer than the expected received signal!
-        self.data_buffer = (ctypes.c_int16 * os.n_samples)()
+        self.data_buffer = (ctypes.c_int16 * self.n_samples)()
         self.status["setDataBuffer"] = ps.ps5000aSetDataBuffer(self.chandle, os.channel,
                                                                ctypes.byref(self.data_buffer),
-                                                               os.n_samples, 0, 0)
+                                                               self.n_samples, 0, 0)
         assert_pico_ok(self.status["setDataBuffer"])
 
     def setMeasTrigger(self):
@@ -81,7 +82,7 @@ class Oscilloscope:
         assert_pico_ok(self.status["trigger"])
 
     def runMeasurement(self):
-        self.status["runBlock"] = ps.ps5000aRunBlock(self.chandle, 0, os.n_samples,
+        self.status["runBlock"] = ps.ps5000aRunBlock(self.chandle, 0, self.n_samples,
                                                      self.findTimebase(os.sampling_frequency), None, 0, None,
                                                      None)
         assert_pico_ok(self.status["runBlock"])
@@ -96,21 +97,24 @@ class Oscilloscope:
             self.status["isReady"] = ps.ps5000aIsReady(self.chandle, ctypes.byref(is_ready))
 
         overflow = ctypes.c_int16()
-        c_samples = ctypes.c_int32(os.n_samples)
+        c_samples = ctypes.c_int32(self.n_samples)
         self.status["getValues"] = ps.ps5000aGetValues(self.chandle, 0, ctypes.byref(c_samples), 0, 0, 0,
                                                        ctypes.byref(overflow))
         assert_pico_ok(self.status["getValues"])
 
     def plotData(self):
         samples = adc2mV(self.data_buffer, os.range, self.maxADC)
-        time = np.linspace(0, (os.n_samples - 1) * 1 / (os.sampling_frequency / 1000), os.n_samples)
+        time = np.linspace(0, (self.n_samples - 1) * 1 / (os.sampling_frequency / 1000), self.n_samples)
         plt.plot(time, samples[:])
         plt.xlabel('Time [ns]')
         plt.ylabel('Voltage [mV]')
         plt.show()
 
-        # Test
+        # Test:
+        # print(f"Desired samples: {self.n_samples} ")
         # print(f"Output Samples: {len(samples)}")
+        # print(f"Desired measurement time: {os.measurement_time} ms")
+        # print(f"Desired impulse length: {os.impulse_length} ms")
 
     # Generator methods seem to work.
     # However, after starting and stopping the generator (only setting is fine),
@@ -136,7 +140,7 @@ class Oscilloscope:
 
     def generateImpulse(self):
         self.startGenerator()
-        sleep(os.impulse_length)
+        sleep(os.impulse_length / 1000)
         self.stopGenerator()
 
     # Based on picoscope5000a programming guide.

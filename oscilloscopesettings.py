@@ -14,8 +14,8 @@ class OscilloscopeSettings:
     range: int  # PS5000A_RANGE[...]
     # TODO Converting from desired measurement time to number of samples (*or give a choice)
     sampling_frequency: float  # MHz / MSa/s
-    n_samples: int  # In future change it to measurment_time
-    # measurement_time: float # ms
+    #n_samples: int  # In future change it to measurment_time
+    measurement_time: float # ms
     # buffer_length: int # ?
     trigger_source: int  # PS5000A_CHANNEL[...]
     trigger_threshold: float   # mV
@@ -27,4 +27,4 @@ class OscilloscopeSettings:
     Vpp: int  # uV / microVolts; max 4Vpp
     wave_type: int  # PS5000A_WAVE_TYPE
     signal_frequency: float  # kHz - presumption
-    impulse_length: float  # seconds
+    impulse_length: float  # ms
