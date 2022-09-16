@@ -47,6 +47,7 @@ class Controller:
                 except Exception as e:
                     self.log.exception(f"Error while running action: "
                                        f"{type(action)}:")
+                    print(e)
 
     def join(self):
         self._process.join()

@@ -22,9 +22,12 @@ class Tank:
     :param name: name of the tank
     :param dimensions: dimensions of the tank, width (OX), depth (OY),
       height (OZ)
+    :param position: coordinates x,y,z  of point which is closer bottom left
+    corner of tank in global coordinate system
     """
     name: str
     dimensions: Tuple[float, float, float]
+    position: Tuple[float, float, float]
 
 
 class ScanRoute:
@@ -43,9 +46,10 @@ class ScanRoute:
       1: motor_x to right,
       10: motor_y to left
       11: motor_y to right,
-      21: motor_x to right}
-      right - moving away from local (0.0.0)
-      left - moving closer to local (0.0.0)
+      20: motor_z to left
+      21: motor_z to right}
+      right - moving away from local and global (0.0.0)
+      left - moving closer to local and global (0.0.0)
     """
     def __init__(self, indexes_x, indexes_y, indexes_z, which_motor_and_side):
         self.indexes_x = indexes_x
@@ -54,29 +58,60 @@ class ScanRoute:
         self.which_motor_and_side = which_motor_and_side
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class MeasurementPlan:
     """
     A plan of measurement to execute in the system.
 
     :param name: name of the measurement
     :param tank: the tank in which the measurement was made
-    :param position: distance xyz from global point (0.0.0)
+    :param min_position: minimal values of x, y, z coordinates in global
+    coordinates system (also measurement start point)
+    :param max_position: maximal values of x, y, z coordinates in global
+    coordinates system
     :param grid_precision: distance between points in grid in all axis
     :param scan_route: enables scanning in the previously planned order
     """
     name: str
     tank: Tank
-    position: Tuple[float, float, float]
+    min_position: Tuple[float, float, float]
+    max_position: Tuple[float, float, float]
     grid: Tuple[np.ndarray, np.ndarray, np.ndarray]
     grid_precision: Tuple[float, float, float]
+
+    def set_grid(self):
+        grid = []
+        for i in range(3):
+            grid.append(np.arange(self.min_position[i], self.max_position[i] +
+                                  0.5 * self.grid_precision[i],
+                                  self.grid_precision[i]))
+
+        self.grid = (grid[0], grid[1], grid[2])
+
+    def check_positions(self):
+        """
+        Check whether max and min position were given correctly and whether grid
+        is suitable for size of aquarium.
+        """
+        for i in range(3):
+            if self.min_position[i] > self.max_position[i]:
+                raise ValueError("Min position can't be bigger than max "
+                                 "position")
+
+        for i in range(3):
+            if self.min_position[i] <= self.tank.position[i]:
+                raise ValueError("Grid is too big for aquarium")
+
+            if self.max_position[i] >= round((self.tank.position[i] +
+                                              self.tank.dimensions[i]), 3):
+                raise ValueError("Grid is too big for aquarium")
 
 
 class XyzSystemState(Enum):
     """
     State of the XYZ system.
 
-    - AT_THE_BEGINNING: XYZ is at the beginning point (0.0.0).
+    - AT_THE_BEGINNING: XYZ is at the local beginning point (0.0.0).
     - STOPPED: XYZ is not performing any measurement right now.
     - RUNNING: XYZ is currently running some measurement.
     - FINISHED: XYZ finished performing its previous measurement.
@@ -120,17 +155,21 @@ class Motor:
     """
        Motor that moves in x,y or z.
 
-       :param position: position in one axis from global point 000 in which is
-       currently thing that motor moves
-       """
-    def __init__(self, position):
-        self.position = position
+       :param position: position in one axis from global point 000 in which
+       motor currently is.
+       :param max_distance: big number which surely makes motor rotate till
+       0 in one axis in global coordinate system.
 
-    def _rotate_left(self, distance): #check_
+       """
+    def __init__(self):
+        self.position = 0
+        self.max_distance = 3.0
+
+    def rotate_left(self, distance):
         self.position = self.position - distance
         #move_left(distance)
 
-    def _rotate_right(self, distance): #check_
+    def rotate_right(self, distance):
         self.position = self.position + distance
         #move_right(distance)
 
@@ -143,9 +182,9 @@ class XyzSystem:
         self.measurement_progress = None
         self.measurement_thread = None
         self.state = XyzSystemState.STOPPED
-        self.motor_x = Motor(position=5e-3)  # it has to be changed after
-        self.motor_y = Motor(position=6e-3)  # discussion about positioning
-        self.motor_z = Motor(position=7e-3)
+        self.motor_x = Motor()
+        self.motor_y = Motor()
+        self.motor_z = Motor()
         self.scan_route = None
 
     def run_settings(self, settings_path: str):
@@ -164,7 +203,8 @@ class XyzSystem:
         :param plan: measurement plan to run
         """
         self.configure_measurement(plan)
-        self._move_at_the_beginning()
+        self.move_at_the_global_beginning()
+        self._move_at_the_local_beginning()
         return self.start_measurement()
 
     def configure_measurement(self, plan: MeasurementPlan):
@@ -177,6 +217,8 @@ class XyzSystem:
         self.log.info(f"Configuring measurement")
         if self.state == XyzSystemState.RUNNING:
             raise ValueError("The system is busy.")
+        plan.check_positions()
+        plan.set_grid()
         self.measurement_plan = plan
         self._make_scan_route()
 
@@ -277,10 +319,10 @@ class XyzSystem:
 
     def get_motors(self) -> Tuple[Motor, Motor, Motor]:
         """
-               Returns all working motors.
+        Returns all working motors.
 
-               :return: motor in x-axis, motor in y-axis, motor in z-axis
-               """
+        :return: motor in x-axis, motor in y-axis, motor in z-axis
+        """
         return self.motor_x, self.motor_y, self.motor_z
 
     def exit(self):
@@ -321,6 +363,7 @@ class XyzSystem:
             1: self._move_motor_x_right,
             10: self._move_motor_y_left,
             11: self._move_motor_y_right,
+            20: self._move_motor_z_left,
             21: self._move_motor_z_right
         }
         n_percent_values = []
@@ -380,7 +423,7 @@ class XyzSystem:
         spec.loader.exec_module(module)
         return module
 
-    def _move_at_the_beginning(self):
+    def _move_at_the_local_beginning(self):
         """
         Moves all motors to local (0.0.0) point - left bottom corner of grid.
         """
@@ -388,13 +431,22 @@ class XyzSystem:
         motors = self.get_motors()
         distances = []
         for i in range(3):
-            distances.append(motors[i].position - plan.position[i])
+            distances.append(motors[i].position - plan.min_position[i])
             if distances[i] > 0:
-                motors[i]._rotate_left(distances[i])
+                motors[i].rotate_left(distances[i])
             else:
-                motors[i]._rotate_right(abs(distances[i]))
+                motors[i].rotate_right(abs(distances[i]))
 
         self._set_state_to_beginning()
+
+    def move_at_the_global_beginning(self):
+        """
+        Moves all motors to global (0.0.0) point.
+        """
+        motors = self.get_motors()
+        for i in range(3):
+            motors[i].rotate_left(motors[i].max_distance)
+            motors[i].position = 0
 
     def _make_scan_route(self):
         """
@@ -479,29 +531,35 @@ class XyzSystem:
     def _move_motor_x_right(self):
         plan = self.get_plan()
         motor = self.get_motor_x()
-        motor._rotate_right(plan.grid_precision[0])
+        motor.rotate_right(plan.grid_precision[0])
         # print("x right")
 
     def _move_motor_x_left(self):
         plan = self.get_plan()
         motor = self.get_motor_x()
-        motor._rotate_left(plan.grid_precision[0])
+        motor.rotate_left(plan.grid_precision[0])
         # print("x left")
 
     def _move_motor_y_right(self):
         plan = self.get_plan()
         motor = self.get_motor_y()
-        motor._rotate_right(plan.grid_precision[1])
+        motor.rotate_right(plan.grid_precision[1])
         # print("y right")
 
     def _move_motor_y_left(self):
         plan = self.get_plan()
         motor = self.get_motor_y()
-        motor._rotate_left(plan.grid_precision[1])
+        motor.rotate_left(plan.grid_precision[1])
         # print("y left")
 
     def _move_motor_z_right(self):
         plan = self.get_plan()
         motor = self.get_motor_z()
-        motor._rotate_right(plan.grid_precision[2])
+        motor.rotate_right(plan.grid_precision[2])
         # print("z right")
+
+    def _move_motor_z_left(self):
+        plan = self.get_plan()
+        motor = self.get_motor_z()
+        motor.rotate_left(plan.grid_precision[2])
+        # print("z left")
