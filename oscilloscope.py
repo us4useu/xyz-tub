@@ -23,7 +23,7 @@ class Oscilloscope:
         self.maxADC = ctypes.c_int16()
 
         self.openConnection()
-        self.disableAllChannels()
+        self.disableChannel(['all'])
         self.findMaxADCVal()
 
     def findMaxADCVal(self):
@@ -47,10 +47,12 @@ class Oscilloscope:
                 self.log.warning("Power supply unit not connected." +
                                  " Only A and B channels and no generator will be available.")
                 self.status["changePowerSource"] = ps.ps5000aChangePowerSource(self.chandle, powerstatus)
+            elif powerstatus == 3:
+                self.log.exception("Oscilloscope is not connected!")
+                raise
             else:
                 self.log.exception("Encountered unexpected picosdk exception.")
                 raise
-
             try:
                 assert_pico_ok(self.status["changePowerSource"])
             except PicoError:
@@ -231,6 +233,11 @@ class Oscilloscope:
                     ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_14BIT"]: _14bitFormula
                     }
 
+        # formulas = {ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_8BIT"]: lambda sf: 3 if sf == 125.0 else 125/sf+2,
+        #             ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_12BIT"]: lambda sf: log2(500/sf)+1 if sf in [125, 250, 500] else 62.5/sf+3,
+        #             ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_14BIT"]: lambda sf: log2(1000/sf) if sf in [250, 500, 1000] else 125/sf+2
+        #             }
+
         return formulas[resolution]
 
     # Returns integer timebase parameter that will allow to set desired sampling frequency
@@ -239,30 +246,18 @@ class Oscilloscope:
         formula = self._returnTimeBaseFormula(os.resolution)
         return int(formula(sampling_frequency))
 
-    def disableAllChannels(self):
-        try:
-            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_A"], 0,
-                                                             os.coupling_type,
-                                                             os.range, 0)
-            assert_pico_ok(self.status["setChannel"])
-            self.log.info("Disabled channel A.")
+    def disableChannel(self, channels: list[str]):
+        if channels[0] == 'all':
+            channels = ['A', 'B', 'C', 'D']
 
-            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_B"], 0,
-                                                             os.coupling_type,
-                                                             os.range, 0)
-            assert_pico_ok(self.status["setChannel"])
-            self.log.info("Disabled channel B.")
-
-            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_C"], 0,
-                                                             os.coupling_type,
-                                                             os.range, 0)
-            assert_pico_ok(self.status["setChannel"])
-            self.log.info("Disabled channel C.")
-
-            self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, ps.PS5000A_CHANNEL["PS5000A_CHANNEL_D"], 0,
-                                                             os.coupling_type,
-                                                             os.range, 0)
-            assert_pico_ok(self.status["setChannel"])
-            self.log.info("Disabled channel D.")
-        except PicoError:
-            self.log.exception("Exception disabling oscilloscope channels.")
+        for channel in channels:
+            try:
+                self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle,
+                                                                 ps.PS5000A_CHANNEL["PS5000A_CHANNEL_" + channel],
+                                                                 0, os.coupling_type, os.range, 0)
+                assert_pico_ok(self.status["setChannel"])
+            except PicoError:
+                self.log.exception(f"Exception disabling oscilloscope channel {channel}.")
+                raise
+            else:
+                self.log.info(f"Disabled channel {channel}.")
