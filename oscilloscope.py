@@ -8,6 +8,7 @@ from picosdk.functions import assert_pico_ok, mV2adc, adc2mV
 from picosdk.errors import PicoSDKCtypesError, PicoError
 from config import oscilloscope_settings as os
 from logging_ import get_logger
+from settingsdict import channel, resolution
 
 # TODO Consider using some @exception_handler decorator to handle exceptions.
 
@@ -208,7 +209,7 @@ class Oscilloscope:
 
     # Based on picoscope5000a programming guide.
     # noinspection PyMethodMayBeStatic
-    def _returnTimeBaseFormula(self, resolution: int):
+    def _returnTimeBaseFormula(self, res: int):
 
         def _14bitFormula(sampling_frequency: float):
             if sampling_frequency == 125.0:
@@ -228,17 +229,17 @@ class Oscilloscope:
             else:
                 return 125 / sampling_frequency + 2
 
-        formulas = {ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_8BIT"]: _8bitFormula,
-                    ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_12BIT"]: _12bitFormula,
-                    ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_14BIT"]: _14bitFormula
+        formulas = {resolution["8BIT"]: _8bitFormula,
+                    resolution["12BIT"]: _12bitFormula,
+                    resolution["14BIT"]: _14bitFormula
                     }
 
-        # formulas = {ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_8BIT"]: lambda sf: 3 if sf == 125.0 else 125/sf+2,
-        #             ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_12BIT"]: lambda sf: log2(500/sf)+1 if sf in [125, 250, 500] else 62.5/sf+3,
-        #             ps.PS5000A_DEVICE_RESOLUTION["PS5000A_DR_14BIT"]: lambda sf: log2(1000/sf) if sf in [250, 500, 1000] else 125/sf+2
+        # formulas = {resolution["8BIT"]: lambda sf: 3 if sf == 125.0 else 125/sf+2,
+        #             resolution["12BIT"]: lambda sf: log2(500/sf)+1 if sf in [125, 250, 500] else 62.5/sf+3,
+        #             resolution["14BIT"]: lambda sf: log2(1000/sf) if sf in [250, 500, 1000] else 125/sf+2
         #             }
 
-        return formulas[resolution]
+        return formulas[res]
 
     # Returns integer timebase parameter that will allow to set desired sampling frequency
     # on the oscilloscope.
@@ -249,15 +250,14 @@ class Oscilloscope:
     def disableChannel(self, channels: list[str]):
         if channels[0] == 'all':
             channels = ['A', 'B', 'C', 'D']
-
-        for channel in channels:
+        for ch in channels:
             try:
                 self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle,
-                                                                 ps.PS5000A_CHANNEL["PS5000A_CHANNEL_" + channel],
+                                                                 channel[ch],
                                                                  0, os.coupling_type, os.range, 0)
                 assert_pico_ok(self.status["setChannel"])
             except PicoError:
-                self.log.exception(f"Exception disabling oscilloscope channel {channel}.")
+                self.log.exception(f"Exception disabling oscilloscope channel {ch}.")
                 raise
             else:
-                self.log.info(f"Disabled channel {channel}.")
+                self.log.info(f"Disabled channel {ch}.")
