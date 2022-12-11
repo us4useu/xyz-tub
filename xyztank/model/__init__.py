@@ -3,5 +3,7 @@ from xyztank.model.base import (
     Tank,
     MeasurementPlan,
     MeasurementResult,
-    Motor
+    Motor,
+    Hydrophone,
+    UltrasoundTransducer
 )

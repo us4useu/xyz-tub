@@ -4,6 +4,7 @@ import importlib
 import sys
 import math
 import threading
+
 import numpy as np
 from enum import Enum
 from dataclasses import dataclass
@@ -24,6 +25,47 @@ class Tank:
       height (OZ)
     :param position: coordinates x,y,z  of point which is closer bottom left
     corner of tank in global coordinate system
+    """
+    name: str
+    dimensions: Tuple[float, float, float]
+    position: Tuple[float, float, float]
+
+
+@dataclass(frozen=False)
+class Hydrophone:
+    """
+    Hydrophone.
+
+    :param name: name of the hydrophone
+    :param dimensions: dimensions of the hydrophone, width (OX), depth (OY),
+    height (OZ)
+    :param position: coordinates x,y,z  of center point of hydrophone
+     in global coordinate system
+    :safety_margin: minimal distances in m in each axis that other objects
+    should be away from hydrophone
+    """
+    name: str
+    dimensions: Tuple[float, float, float]
+    position: Tuple[float, float, float]
+    safety_margin: float
+
+    def set_dimensions(self, dimension_x, dimension_y, dimension_z):
+        self.dimensions = (dimension_x, dimension_y, dimension_z)
+
+    def get_dimensions(self):
+        return self.dimensions
+
+
+@dataclass(frozen=False)
+class UltrasoundTransducer:
+    """
+    UltrasoundTransducer.
+
+    :param name: name of the ultrasound transducer
+    :param dimensions: dimensions of the ultrasound transducer, width (OX),
+    depth (OY), height (OZ)
+    :param position: coordinates x,y,z  of center point of bottom of the
+    ultrasound transducer in global coordinate system
     """
     name: str
     dimensions: Tuple[float, float, float]
@@ -74,6 +116,7 @@ class MeasurementPlan:
     """
     name: str
     tank: Tank
+    is_vertical: bool
     min_position: Tuple[float, float, float]
     max_position: Tuple[float, float, float]
     grid: Tuple[np.ndarray, np.ndarray, np.ndarray]
@@ -88,23 +131,27 @@ class MeasurementPlan:
 
         self.grid = (grid[0], grid[1], grid[2])
 
-    def check_positions(self):
+    def check_positions(self, hydrophone: Hydrophone):
         """
         Check whether max and min position were given correctly and whether grid
-        is suitable for size of aquarium.
+        is suitable for size of aquarium (when we consider size of hydrophone too).
         """
+
         for i in range(3):
             if self.min_position[i] > self.max_position[i]:
                 raise ValueError("Min position can't be bigger than max "
                                  "position")
 
         for i in range(3):
-            if self.min_position[i] <= self.tank.position[i]:
+            if (self.min_position[i] - 0.5 * hydrophone.dimensions[i] - hydrophone.safety_margin) < self.tank.position[i]:
                 raise ValueError("Grid is too big for aquarium")
 
-            if self.max_position[i] >= round((self.tank.position[i] +
-                                              self.tank.dimensions[i]), 3):
+            if (self.max_position[i] + 0.5 * hydrophone.dimensions[i] +
+                hydrophone.safety_margin) > (self.tank.position[i] +
+                                                self.tank.dimensions[i]):
                 raise ValueError("Grid is too big for aquarium")
+
+
 
 
 class XyzSystemState(Enum):
@@ -186,6 +233,8 @@ class XyzSystem:
         self.motor_y = Motor()
         self.motor_z = Motor()
         self.scan_route = None
+        self.hydrophone = None
+        self.ultrasound_transducer = None
 
     def run_settings(self, settings_path: str):
         """
@@ -194,6 +243,8 @@ class XyzSystem:
         :param settings_path: path to the settings file
         """
         settings = self._load_settings(settings_path)
+        self.hydrophone = settings.hydrophone
+        self.ultrasound_transducer = settings.ultrasound_transducer
         self.run_measurement(settings.plan)
 
     def run_measurement(self, plan: MeasurementPlan):
@@ -217,7 +268,12 @@ class XyzSystem:
         self.log.info(f"Configuring measurement")
         if self.state == XyzSystemState.RUNNING:
             raise ValueError("The system is busy.")
-        plan.check_positions()
+        if plan.is_vertical is not True:
+            hydrophone_x, hydrophone_y, hydrophone_z = self.hydrophone.get_dimensions()
+            hydrophone_y, hydrophone_z = hydrophone_z, hydrophone_y
+            self.hydrophone.set_dimensions(hydrophone_x, hydrophone_y, hydrophone_z)
+
+        plan.check_positions(self.hydrophone)
         plan.set_grid()
         self.measurement_plan = plan
         self._make_scan_route()
@@ -425,13 +481,24 @@ class XyzSystem:
 
     def _move_at_the_local_beginning(self):
         """
-        Moves all motors to local (0.0.0) point - left bottom corner of grid.
+        Moves all motors to local (0.0.0) point.
+
+        In vertical measurement local point is max z, min y, min x of grid.
+        In horizontal measurement local point is min z, max y, min x of grid.
+
         """
         plan = self.get_plan()
         motors = self.get_motors()
         distances = []
+        distances.append(motors[0].position - plan.min_position[0])
+        if plan.is_vertical is True:
+            distances.append(motors[1].position - plan.min_position[1])
+            distances.append(motors[2].position - plan.max_position[2])
+        else:
+            distances.append(motors[1].position - plan.max_position[1])
+            distances.append(motors[2].position - plan.min_position[2])
+
         for i in range(3):
-            distances.append(motors[i].position - plan.min_position[i])
             if distances[i] > 0:
                 motors[i].rotate_left(distances[i])
             else:
@@ -453,16 +520,25 @@ class XyzSystem:
         Count scan route for measurement based on current plan and add member
         scan_route.
         """
+
         plan = self.get_plan()
         grid_x, grid_y, grid_z = plan.grid
         len_grid_z = len(grid_z)
         len_grid_y = len(grid_y)
         len_grid_x = len(grid_x)
+        is_vertical = plan.is_vertical;
+
+        if is_vertical is not True:
+            a = len_grid_y
+            len_grid_y = len_grid_z
+            len_grid_z = a
+
         all_xyz_values = len_grid_z * len_grid_y * len_grid_x
         all_xy_values = len_grid_x * len_grid_y
         all_yz_values = len_grid_z * len_grid_y
         indexes_z = np.arange(0, len_grid_z, dtype='int32')
         indexes_z = np.repeat(indexes_z, all_xy_values)
+        indexes_z = np.flip(indexes_z)
         indexes_y = np.arange(0, len_grid_y, dtype='int32')
         indexes_y = np.repeat(indexes_y, len_grid_x)
         indexes_y_forth = indexes_y
@@ -522,11 +598,22 @@ class XyzSystem:
         which_motor[-1] = 3
         which_side[y_movement_forth] = 1
         which_side[y_movement_back] = 0
-        which_side[z_movement] = 1
+        which_side[z_movement] = 0
         which_side[-1] = 2
         which_motor_and_side = 10 * which_motor + which_side
+
+        if is_vertical is not True:
+            a = indexes_y
+            indexes_y = indexes_z
+            indexes_z = a
+            which_motor_and_side[which_motor_and_side == 11] = 21
+            which_motor_and_side[which_motor_and_side == 10] = 3
+            which_motor_and_side[which_motor_and_side == 20] = 4
+            which_motor_and_side[which_motor_and_side == 3] = 20
+            which_motor_and_side[which_motor_and_side == 4] = 10
+
         self.scan_route = ScanRoute(indexes_x, indexes_y, indexes_z,
-                               which_motor_and_side)
+                                    which_motor_and_side)
 
     def _move_motor_x_right(self):
         plan = self.get_plan()
