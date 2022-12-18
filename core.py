@@ -8,7 +8,7 @@ from picosdk.functions import assert_pico_ok, mV2adc, adc2mV
 from picosdk.errors import PicoSDKCtypesError, PicoError
 from config import oscilloscope_settings as os
 from logging_ import get_logger
-from settingsdict import channel, resolution
+from dict import channel, resolution
 
 # TODO Consider using some @exception_handler decorator to handle exceptions.
 
@@ -23,15 +23,15 @@ class Oscilloscope:
         self.status = dict()
         self.maxADC = ctypes.c_int16()
 
-        self.openConnection()
-        self.disableChannel(['all'])
-        self.findMaxADCVal()
+        self.open_connection()
+        self.disable_channel(['all'])
+        self.find_max_adc_val()
 
-    def findMaxADCVal(self):
+    def find_max_adc_val(self):
         self.status["maximumValue"] = ps.ps5000aMaximumValue(self.chandle, ctypes.byref(self.maxADC))
         assert_pico_ok(self.status["maximumValue"])
 
-    def openConnection(self):
+    def open_connection(self):
         self.status["openunit"] = ps.ps5000aOpenUnit(ctypes.byref(self.chandle), None, os.resolution)
         try:
             assert_pico_ok(self.status["openunit"])
@@ -64,7 +64,7 @@ class Oscilloscope:
         else:
             self.log.info("Connection with the oscilloscope established.")
 
-    def setChannel(self):
+    def set_channel(self):
         self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, os.channel, 1, os.coupling_type,
                                                          os.range, 0)
         try:
@@ -78,7 +78,7 @@ class Oscilloscope:
         self.n_samples = int(1000 * os.measurement_time * os.sampling_frequency)
         self.verify_timeinterval = ctypes.c_float()  # ns
         self.verify_n_samples = ctypes.c_int32()
-        self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, self.findTimebase(os.sampling_frequency),
+        self.status["getTimebase2"] = ps.ps5000aGetTimebase2(self.chandle, self.find_timebase(os.sampling_frequency),
                                                              self.n_samples, ctypes.byref(self.verify_timeinterval),
                                                              ctypes.byref(self.verify_n_samples), 0)
         self.log.info(f"Desired sampling frequency: {os.sampling_frequency} Msa/s")
@@ -86,8 +86,7 @@ class Oscilloscope:
         # Test
         # print(f"Verified frequency: {1 / (self.verify_timeinterval.value / 1000)} MHz")
         # print(f"Desired frequency: {os.sampling_frequency} MHz")
-        #print(f"Verified samples: {self.verify_n_samples.value}")  # What's that value exactly?
-
+        # print(f"Verified samples: {self.verify_n_samples.value}")  # What's that value exactly?
 
         # Do we want our data_buffer to be global? Maybe just put it in runMeasurement method?
         # Buffer has to be much longer than the expected received signal!
@@ -102,7 +101,7 @@ class Oscilloscope:
         else:
             self.log.info("Data buffer is set.")
 
-    def setMeasTrigger(self):
+    def set_meas_trigger(self):
         self.status["trigger"] = ps.ps5000aSetSimpleTrigger(self.chandle, 1, os.trigger_source,
                                                             int(mV2adc(os.trigger_threshold, os.range, self.maxADC)), 2,
                                                             int(os.delay / (self.verify_timeinterval.value / 1000000)),
@@ -115,9 +114,9 @@ class Oscilloscope:
         else:
             self.log.info("Mesurement trigger set with config parameters.")
 
-    def runMeasurement(self):
+    def run_measurement(self):
         self.status["runBlock"] = ps.ps5000aRunBlock(self.chandle, 0, self.n_samples,
-                                                     self.findTimebase(os.sampling_frequency), None, 0, None,
+                                                     self.find_timebase(os.sampling_frequency), None, 0, None,
                                                      None)
         try:
             assert_pico_ok(self.status["runBlock"])
@@ -129,7 +128,7 @@ class Oscilloscope:
 
     # Instead of executing this function one might consider modifying it and using as a callback function,
     # which is executed when the data is ready. Morea in ps5000aBlockCallbackExample.py
-    def getData(self):
+    def get_data(self):
         is_ready = ctypes.c_int16(0)
         check = ctypes.c_int16(0)
 
@@ -148,7 +147,7 @@ class Oscilloscope:
         else:
             self.log.info("Measurement data acquired to the computer.")
 
-    def plotData(self):
+    def plot_data(self):
         samples = adc2mV(self.data_buffer, os.range, self.maxADC)
         time = np.linspace(0, (self.n_samples - 1) * 1 / (os.sampling_frequency / 1000), self.n_samples)
         plt.plot(time, samples[:])
@@ -170,10 +169,16 @@ class Oscilloscope:
     # signal's peak.
 
     # UPDATE: Try just setting signal's amplitude to 0.
-    def setGenerator(self):
+    def set_generator(self):
         # enums describing generator's settings missing in picosdk. Need to use numerical values.
         # ctypes.c_uint32(-1) - PS5000A_SHOT_SWEEP_TRIGGER_CONTINUOUS_RUN - not available as enum.
-        self.status["setGenerator"] = ps.ps5000aSetSigGenBuiltInV2(self.chandle, os.offset_voltage, os.Vpp, ctypes.c_int32(os.wave_type), os.signal_frequency * 1000, os.signal_frequency * 1000, 0, 1, ctypes.c_int32(0), 0, ctypes.c_uint32(-1), 0, ctypes.c_int32(2), ctypes.c_int32(4), 0)
+        self.status["setGenerator"] = ps.ps5000aSetSigGenBuiltInV2(self.chandle, os.offset_voltage, os.Vpp,
+                                                                   ctypes.c_int32(os.wave_type),
+                                                                   os.signal_frequency * 1000,
+                                                                   os.signal_frequency * 1000,
+                                                                   0, 1, ctypes.c_int32(0), 0,
+                                                                   ctypes.c_uint32(-1), 0,
+                                                                   ctypes.c_int32(2), ctypes.c_int32(4), 0)
         try:
             assert_pico_ok(self.status["setGenerator"])
         except PicoError:
@@ -182,7 +187,7 @@ class Oscilloscope:
         else:
             self.log.info("Generator set with config parameters.")
 
-    def startGenerator(self):
+    def start_generator(self):
         self.status["startGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 1)
         try:
             assert_pico_ok(self.status["startGenerator"])
@@ -192,7 +197,7 @@ class Oscilloscope:
         else:
             self.log.info("Generator started.")
 
-    def stopGenerator(self):
+    def stop_generator(self):
         self.status["stopGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 0)
         try:
             assert_pico_ok(self.status["stopGenerator"])
@@ -202,14 +207,14 @@ class Oscilloscope:
         else:
             self.log.info("Generator stopped.")
 
-    def generateImpulse(self):
-        self.startGenerator()
+    def generate_impulse(self):
+        self.start_generator()
         sleep(os.impulse_length / 1000)
-        self.stopGenerator()
+        self.stop_generator()
 
     # Based on picoscope5000a programming guide.
     # noinspection PyMethodMayBeStatic
-    def _returnTimeBaseFormula(self, res: int):
+    def _return_timebase_formula(self, res: int):
 
         def _14bitFormula(sampling_frequency: float):
             if sampling_frequency == 125.0:
@@ -243,11 +248,11 @@ class Oscilloscope:
 
     # Returns integer timebase parameter that will allow to set desired sampling frequency
     # on the oscilloscope.
-    def findTimebase(self, sampling_frequency: float) -> int:
-        formula = self._returnTimeBaseFormula(os.resolution)
+    def find_timebase(self, sampling_frequency: float) -> int:
+        formula = self._return_timebase_formula(os.resolution)
         return int(formula(sampling_frequency))
 
-    def disableChannel(self, channels: list[str]):
+    def disable_channel(self, channels: list[str]):
         if channels[0] == 'all':
             channels = ['A', 'B', 'C', 'D']
         for ch in channels:
