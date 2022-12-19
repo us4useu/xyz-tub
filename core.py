@@ -1,12 +1,14 @@
 import ctypes
 import numpy as np
 import matplotlib.pyplot as plt
+import importlib.util
+import sys
 from time import sleep
 from math import log2
 from picosdk.ps5000a import ps5000a as ps
 from picosdk.functions import assert_pico_ok, mV2adc, adc2mV
 from picosdk.errors import PicoSDKCtypesError, PicoError
-from config import config
+# from config import config
 from logging_ import get_logger
 from dict import channel, resolution
 
@@ -16,11 +18,10 @@ from dict import channel, resolution
 class Oscilloscope:
     """A class responsible for managing the oscilloscope."""
 
-    def __init__(self):
+    def __init__(self, config_path: str):
         # This attribute is assigned a value later.
-
-        self.config = config  # Config is now a field of the Oscilloscope class
         self.log = get_logger(type(self).__name__)
+        self.config = self.import_config(config_path)  # Config is now dynamically imported from a specified file.
         self.chandle = ctypes.c_int16()
         self.status = dict()
         self.maxADC = ctypes.c_int16()
@@ -282,3 +283,16 @@ class Oscilloscope:
                 raise
             else:
                 self.log.info(f"Disabled channel {ch}.")
+
+    def import_config(self, path: str):
+        try:
+            spec = importlib.util.spec_from_file_location("conf", path)
+            conf = importlib.util.module_from_spec(spec)
+            sys.modules["conf"] = conf
+            spec.loader.exec_module(conf)
+        except:
+            self.log.exception("Exception importing config from file. Check if specified file exists.")
+            raise
+        else:
+            self.log.info("Successfully imported config from specified file.")
+            return conf.config
