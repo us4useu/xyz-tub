@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, kw_only=True)
-class OscilloscopeSettings:
+class Settings:
     channel: int  # channel["..."]
     resolution: int  # resolution["..."]
     coupling_type: int  # coupling["..."]

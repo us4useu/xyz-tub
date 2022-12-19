@@ -1,9 +1,9 @@
 # Here goes an instance of OscilloscopeSettings
 from picosdk.ps5000a import ps5000a as ps
-from settings import OscilloscopeSettings
+from settings import Settings
 from dict import *
 
-oscilloscope_settings = OscilloscopeSettings(
+config = Settings(
     channel=channel["A"],
     resolution=resolution["12BIT"],
     coupling_type=coupling["DC"],
