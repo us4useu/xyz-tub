@@ -16,9 +16,15 @@ from dict import channel, resolution
 
 
 class Oscilloscope:
-    """A class responsible for managing the oscilloscope."""
+    """
+    A class responsible for managing the oscilloscope.
+    """
 
     def __init__(self, config_path: str):
+        """
+        Initializes the class, imports measurement configuration and connects with the device.
+        :param config_path (string) : full path to configuration file
+        """
         # This attribute is assigned a value later.
         self.log = get_logger(type(self).__name__)
         self.config = self.import_config(config_path)  # Config is now dynamically imported from a specified file.
@@ -31,10 +37,17 @@ class Oscilloscope:
         self.find_max_adc_val()
 
     def find_max_adc_val(self):
+        """
+        Outputs the maximum ADC count value to maxADC class field. The output value depends on the currently selected
+        resolution.
+        """
         self.status["maximumValue"] = ps.ps5000aMaximumValue(self.chandle, ctypes.byref(self.maxADC))
         assert_pico_ok(self.status["maximumValue"])
 
     def open_connection(self):
+        """
+        Manages connecting with the oscilloscope.
+        """
         self.status["openunit"] = ps.ps5000aOpenUnit(ctypes.byref(self.chandle), None, self.config.resolution)
         try:
             assert_pico_ok(self.status["openunit"])
@@ -47,6 +60,7 @@ class Oscilloscope:
                 self.log.debug("Device connected to USB 2.0 port, oscilloscope expects USB 3.0.")
                 self.status["changePowerSource"] = ps.ps5000aChangePowerSource(self.chandle, powerstatus)
             # PICO_POWER_SUPPLY_NOT_CONNECTED
+            # It's recommended to conduct measurements with the oscilloscope connected to the power source.
             elif powerstatus == 282:
                 self.log.warning("Power supply unit not connected." +
                                  " Only A and B channels and no generator will be available.")
@@ -68,6 +82,9 @@ class Oscilloscope:
             self.log.info("Connection with the oscilloscope established.")
 
     def close_connection(self):
+        """
+        Manages disconnecting from the device.
+        """
         self.status["closeunit"] = ps.ps5000aCloseUnit(self.chandle)
         try:
             assert_pico_ok(self.status["closeunit"])
@@ -78,6 +95,10 @@ class Oscilloscope:
             self.log.info("Connection with the oscilloscope closed.")
 
     def set_channel(self):
+        """
+        Sets the channel based on the data provided in config file. Sets data buffer and verifies sampling
+         parameters.
+        """
         self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, self.config.channel, 1,
                                                          self.config.coupling_type, self.config.range, 0)
         try:
@@ -116,6 +137,9 @@ class Oscilloscope:
             self.log.info("Data buffer is set.")
 
     def set_meas_trigger(self):
+        """
+        Sets the detection of an event which will trigger the measurement based on the data provided in config file.
+        """
         self.status["trigger"] = ps.ps5000aSetSimpleTrigger(
             self.chandle, 1, self.config.trigger_source,
             int(mV2adc(self.config.trigger_threshold, self.config.range, self.maxADC)), 2,
@@ -130,6 +154,10 @@ class Oscilloscope:
             self.log.info("Mesurement trigger set with config parameters.")
 
     def run_measurement(self):
+        """
+        Sets and starts the measurement process. The device will wait for the previously set trigger
+         and collect the data to its memory.
+        """
         self.status["runBlock"] = ps.ps5000aRunBlock(self.chandle, 0, self.n_samples,
                                                      self.find_timebase(self.config.sampling_frequency), None, 0, None,
                                                      None)
@@ -144,6 +172,10 @@ class Oscilloscope:
     # Instead of executing this function one might consider modifying it and using as a callback function,
     # which is executed when the data is ready. Morea in ps5000aBlockCallbackExample.py
     def get_data(self):
+        """
+        Retrieves the measurement data from the oscilloscope's memory.
+        :return: samples (array): Measurement data scaled in mV.
+        """
         is_ready = ctypes.c_int16(0)
         check = ctypes.c_int16(0)
 
@@ -166,6 +198,9 @@ class Oscilloscope:
             return self.samples
 
     def plot_data(self):
+        """
+        Simple matplotlib plot of the measurement data for the verification purpouses.
+        """
         time = np.linspace(0, (self.n_samples - 1) * 1 / (self.config.sampling_frequency / 1000), self.n_samples)
         plt.plot(time, self.samples[:])
         plt.xlabel('Time [ns]')
@@ -187,6 +222,9 @@ class Oscilloscope:
 
     # UPDATE: Try just setting signal's amplitude to 0.
     def set_generator(self):
+        """
+        Sets the generator based on the data provided in config file.
+        """
         # enums describing generator's settings missing in picosdk. Need to use numerical values.
         # ctypes.c_uint32(-1) - PS5000A_SHOT_SWEEP_TRIGGER_CONTINUOUS_RUN - not available as enum.
         self.status["setGenerator"] = ps.ps5000aSetSigGenBuiltInV2(self.chandle, self.config.offset_voltage,
@@ -206,6 +244,9 @@ class Oscilloscope:
             self.log.info("Generator set with config parameters.")
 
     def start_generator(self):
+        """
+        Enables the generator's output.
+        """
         self.status["startGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 1)
         try:
             assert_pico_ok(self.status["startGenerator"])
@@ -216,6 +257,9 @@ class Oscilloscope:
             self.log.info("Generator started.")
 
     def stop_generator(self):
+        """
+        Disables the generator's output."
+        """
         self.status["stopGenerator"] = ps.ps5000aSigGenSoftwareControl(self.chandle, 0)
         try:
             assert_pico_ok(self.status["stopGenerator"])
@@ -226,14 +270,21 @@ class Oscilloscope:
             self.log.info("Generator stopped.")
 
     def generate_impulse(self):
+        """
+        Generates an impulse of length (time) specified in config file."
+        """
         self.start_generator()
         sleep(self.config.impulse_length / 1000)
         self.stop_generator()
 
-    # Based on picoscope5000a programming guide.
     # noinspection PyMethodMayBeStatic
     def _return_timebase_formula(self, res: int):
-
+        """
+        Returns formula for calculating the timebase, depending on the resolution chosen in config.
+        Based on picoscope5000a programming guide.
+        :param res (int): chosen oscilloscope's resolution
+        :return: formula (fun): function used for calculating the timebase.
+        """
         def _14bitFormula(sampling_frequency: float):
             if sampling_frequency == 125.0:
                 return 3
@@ -264,13 +315,21 @@ class Oscilloscope:
 
         return formulas[res]
 
-    # Returns integer timebase parameter that will allow to set desired sampling frequency
-    # on the oscilloscope.
     def find_timebase(self, sampling_frequency: float) -> int:
+        """
+        Returns integer timebase parameter that will allow to set desired sampling frequency (or one closest to it)
+        on the oscilloscope.
+        :param sampling_frequency: chosen oscilloscope's sampling frequency
+        :return: n (int) : timebase parameter.
+        """
         formula = self._return_timebase_formula(self.config.resolution)
         return int(formula(sampling_frequency))
 
     def disable_channel(self, channels: list[str]):
+        """
+        Disables chosen oscilloscope's channels. (At the beginning all channels are enabled)
+        :param channels: List of channels to be disabled. ['all'] means all channels.
+        """
         if channels[0] == 'all':
             channels = ['A', 'B', 'C', 'D']
         for ch in channels:
@@ -285,6 +344,11 @@ class Oscilloscope:
                 self.log.info(f"Disabled channel {ch}.")
 
     def import_config(self, path: str):
+        """
+        Imports config from specified file.
+        :param path: Full path to the configuration file.
+        :return config (Settings) : Imported config dataclass.
+        """
         try:
             spec = importlib.util.spec_from_file_location("conf", path)
             conf = importlib.util.module_from_spec(spec)
