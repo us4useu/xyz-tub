@@ -66,6 +66,16 @@ class Oscilloscope:
         else:
             self.log.info("Connection with the oscilloscope established.")
 
+    def close_connection(self):
+        self.status["closeunit"] = ps.ps5000aCloseUnit(self.chandle)
+        try:
+            assert_pico_ok(self.status["closeunit"])
+        except PicoError:
+            self.log.exception("Eror closing connection with the oscilloscope.")
+            raise
+        else:
+            self.log.info("Connection with the oscilloscope closed.")
+
     def set_channel(self):
         self.status["setChannel"] = ps.ps5000aSetChannel(self.chandle, self.config.channel, 1,
                                                          self.config.coupling_type, self.config.range, 0)
@@ -151,11 +161,12 @@ class Oscilloscope:
             raise
         else:
             self.log.info("Measurement data acquired to the computer.")
+            self.samples = adc2mV(self.data_buffer, self.config.range, self.maxADC)
+            return self.samples
 
     def plot_data(self):
-        samples = adc2mV(self.data_buffer, self.config.range, self.maxADC)
         time = np.linspace(0, (self.n_samples - 1) * 1 / (self.config.sampling_frequency / 1000), self.n_samples)
-        plt.plot(time, samples[:])
+        plt.plot(time, self.samples[:])
         plt.xlabel('Time [ns]')
         plt.ylabel('Voltage [mV]')
         plt.show()
