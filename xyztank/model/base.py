@@ -17,6 +17,10 @@ from xyztank.logging import get_logger
 from serial import Serial
 import xyztank.TMCL as TMCL
 
+serial_port=Serial("COM")       #HERE INSERT USED SERIAL PORT
+bus=TMCL.connect(serial_port)
+module=bus.get_module(1)
+
 
 @dataclass(frozen=True)
 class Tank:
@@ -211,17 +215,28 @@ class Motor:
        0 in one axis in global coordinate system.
 
        """
-    def __init__(self):
+    def __init__(self, axis):
         self.position = 0
         self.max_distance = 3.0
+        self.motor=module.get_motor(axis)
 
     def rotate_left(self, distance):
-        self.position = self.position - distance
-        #move_left(distance)
+        if self.position-distance > self.max_distance:
+            raise ValueError("Requester position higher than max position")
+        if self.position-distance < 0:
+            raise ValueError("Requester position lower than min")
+        else:
+            self.position = self.position - distance
+            self.motor.move_absolute(self.position)
 
     def rotate_right(self, distance):
-        self.position = self.position + distance
-        #move_right(distance)
+        if self.position+distance > self.max_distance:
+            raise ValueError("Requester position higher than max position")
+        if self.position+distance < 0:
+            raise ValueError("Requester position lower than min")
+        else:
+            self.position = self.position + distance
+            self.motor.move_absolute(self.position)
 
 
 class XyzSystem:
