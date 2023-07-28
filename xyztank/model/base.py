@@ -14,6 +14,9 @@ from typing import Tuple
 from xyztank.model import *
 from xyztank.logging import get_logger
 
+from serial import Serial
+import xyztank.TMCL as TMCL
+
 
 @dataclass(frozen=True)
 class Tank:
