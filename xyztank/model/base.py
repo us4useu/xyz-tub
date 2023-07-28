@@ -15,10 +15,14 @@ from xyztank.model import *
 from xyztank.logging import get_logger
 
 from serial import Serial
+import can
 import xyztank.TMCL as TMCL
 
-serial_port=Serial("COM")       #HERE INSERT USED SERIAL PORT
-bus=TMCL.connect(serial_port)
+# port=can.Bus(interface='socketcan',
+#               channel='vcan0',
+#               receive_own_messages=True)
+port=Serial("COM")       #HERE INSERT USED SERIAL PORT
+bus=TMCL.connect(port)
 module=bus.get_module(1)
 
 
@@ -247,9 +251,9 @@ class XyzSystem:
         self.measurement_progress = None
         self.measurement_thread = None
         self.state = XyzSystemState.STOPPED
-        self.motor_x = Motor()
-        self.motor_y = Motor()
-        self.motor_z = Motor()
+        self.motor_x = Motor(0)
+        self.motor_y = Motor(1)
+        self.motor_z = Motor(2)
         self.scan_route = None
         self.hydrophone = None
         self.ultrasound_transducer = None
