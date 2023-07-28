@@ -313,7 +313,11 @@ class XyzSystem:
         """
                 Resume the previously configured measurement.
         """
-        pass
+        if self.state == XyzSystemState.RUNNING:
+            self.log.warn("There is a measurement currently running.")
+        else:
+            self.log.info(f"Resuming the current measurement")
+            self._set_to_running()
 
     def stop_measurement(self):
         """
