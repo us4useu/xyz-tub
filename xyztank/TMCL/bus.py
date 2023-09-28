@@ -40,7 +40,7 @@ class Bus (object):
 		:rtype: Reply
 		"""
 		if self.CAN:
-			msg = struct.pack(MSG_STRUCTURE_CAN, command, type, motorbank,value)
+			msg = struct.pack(MSG_STRUCTURE_CAN, command, type, motorbank, value)
 			self.serial.write(msg)
 			resp = [0]
 			data = self.serial.read(REPLY_LENGTH_CAN)
